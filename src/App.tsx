@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Plus, Minus, Trash2, UserPlus } from 'lucide-react';
+import { Plus, Minus, Trash2, UserPlus, BarChart3 } from 'lucide-react';
 import { supabase, AnecdoteCounter } from './lib/supabase';
+import { WeeklyChart } from './components/WeeklyChart';
 
 function App() {
   const [counters, setCounters] = useState<AnecdoteCounter[]>([]);
   const [newPersonName, setNewPersonName] = useState('');
   const [isAddingPerson, setIsAddingPerson] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showChart, setShowChart] = useState(false);
 
   useEffect(() => {
     loadCounters();
@@ -51,12 +53,27 @@ function App() {
 
   const incrementCount = async (id: string, currentCount: number) => {
     try {
-      const { error } = await supabase
+      const counter = counters.find(c => c.id === id);
+      if (!counter) return;
+
+      const { error: updateError } = await supabase
         .from('anecdote_counters')
         .update({ count: currentCount + 1, updated_at: new Date().toISOString() })
         .eq('id', id);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+
+      const weekStart = getWeekStart(new Date());
+      const { error: historyError } = await supabase
+        .from('anecdote_history')
+        .insert([{
+          counter_id: id,
+          person_name: counter.person_name,
+          count: 1,
+          week_start: weekStart.toISOString().split('T')[0],
+        }]);
+
+      if (historyError) console.error('History insert error:', historyError);
 
       setCounters(counters.map(c =>
         c.id === id ? { ...c, count: currentCount + 1 } : c
@@ -98,6 +115,13 @@ function App() {
     } catch (error) {
       console.error('Error deleting person:', error);
     }
+  };
+
+  const getWeekStart = (date: Date): Date => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(d.setDate(diff));
   };
 
   if (loading) {
@@ -183,7 +207,7 @@ function App() {
         </div>
 
         {counters.length > 0 && !isAddingPerson && (
-          <div className="text-center">
+          <div className="flex gap-3 justify-center mb-6">
             <button
               onClick={() => setIsAddingPerson(true)}
               className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -191,6 +215,19 @@ function App() {
               <UserPlus size={20} />
               Ajouter une personne
             </button>
+            <button
+              onClick={() => setShowChart(!showChart)}
+              className="inline-flex items-center gap-2 bg-slate-600 text-white px-6 py-3 rounded-lg hover:bg-slate-700 transition-colors font-medium"
+            >
+              <BarChart3 size={20} />
+              {showChart ? 'Masquer' : 'Voir'} les graphiques
+            </button>
+          </div>
+        )}
+
+        {showChart && (
+          <div className="mb-8">
+            <WeeklyChart />
           </div>
         )}
 
